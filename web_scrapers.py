@@ -289,11 +289,11 @@ def load_hostkey(url):
         data_hostkey_servers['hdd_size'], data_hostkey_servers['ssd_size'], data_hostkey_servers['nvme_size'] = zip(
             *data_hostkey_servers['disks'].apply(unpack_disks_hostkey))
         data_hostkey_servers = data_hostkey_servers[
-            ['id', 'name', 'cpu_name', 'cpu_count', 'cores', 'frequency', 'ram', 'disks', 'hdd_size', 'ssd_size',
+            ['id', 'name', 'cpu_name', 'cpu_count', 'cores', 'frequency', 'ram', 'hdd_size', 'ssd_size',
              'nvme_size', 'datacenter', 'price', ' limit_order', 'date']]
         data_hostkey_servers = data_hostkey_servers.astype(
             {'id': int, 'name': str, 'cpu_name': str, 'cpu_count': int, 'cores': int,
-             'frequency': float, 'ram': int,  'hdd_size': int, 'ssd_size': int,
+             'frequency': float, 'ram': int, 'hdd_size': int, 'ssd_size': int,
              'nvme_size': int, 'price': float, 'datacenter': str})
         return data_hostkey_servers
 
@@ -320,20 +320,26 @@ def load_timeweb(url):
             cpu_count = a[0]
             cpu_name = a[1]
         cores = server['cpu_cores']
-        freq = server['cpu_vendor'].split(',')[1]
-        ram = server['caption'].split('/')[1]
+        freq = server['cpu_vendor'].split(',')[1].split('-')[0]
+        ram = int(server['memory']) // 1000
         if "DDR4" == server['memory_type']:
             ddr4 = 1
             ddr3 = 0
         else:
             ddr4 = 0
             ddr3 = 1
-        disks = server['disk_desc']
+        disks = server['disk_desc'].lower()
+        if disks.__contains__('geforce'):
+            parts = disks.split('+')
+            gpu = parts[1]
+            disks = parts[0]
+        else:
+            gpu = 0
         price = server['price']
         date = current_date
-        config_row = [id, cpu_name, cpu_count, cores, freq, ram, ddr4, ddr3, disks, price, date]
+        config_row = [id, cpu_name, cpu_count, cores, freq, ram, ddr4, ddr3, disks, gpu, price, date]
         config_row = pd.Series(config_row, index=['id', 'cpu_name', 'cpu_count', 'cores', 'frequency',
-                                                  'ram', 'ddr4', 'ddr3', 'disks', 'price', 'date'], name=counter)
+                                                  'ram', 'ddr4', 'ddr3', 'disks', 'gpu', 'price', 'date'], name=counter)
 
         data_timeweb_servers = pd.concat([data_timeweb_servers, config_row], axis=1, sort=False)
         counter += 1
@@ -348,32 +354,30 @@ def load_timeweb(url):
         if len(disks) != 1:
             disks[1] = disks[1][1:]
         for disk in disks:
-            if not (disk.__contains__('geforce')):
-                disk = disk.split(' ')
-                if disk[3] == 'тб':
-                    size = int(disk[0]) * int(disk[2]) * 1000
-                else:
-                    size = int(disk[0]) * int(disk[2])
-                if disk[4] == 'hdd':
-                    output[disk[4]] = size
-                elif disk[4] == 'ssd':
-                    output[disk[4]] = size
-                else:
-                    output[disk[4]] = size
+            disk = disk.split(' ')
+            if disk[3] == 'тб':
+                size = int(disk[0]) * int(disk[2]) * 1000
+            else:
+                size = int(disk[0]) * int(disk[2])
+            if disk[4] == 'hdd':
+                output[disk[4]] = size
+            elif disk[4] == 'ssd':
+                output[disk[4]] = size
+            else:
+                output[disk[4]] = size
         return output['hdd'], output['ssd'], output['nvme']
 
     data_timeweb_servers = data_timeweb_servers.transpose()
-    data_timeweb_servers['disks'] = data_timeweb_servers['disks'].str.lower()
     data_timeweb_servers['hdd_size'], data_timeweb_servers['ssd_size'], data_timeweb_servers['nvme_size'] = zip(
         *data_timeweb_servers['disks'].apply(unpack_disks_timeweb))
     data_timeweb_servers = data_timeweb_servers[['id', 'cpu_name', 'cpu_count', 'cores', 'frequency',
-                                                 'ram', 'ddr4', 'ddr3', 'disks', 'hdd_size', 'ssd_size', 'nvme_size',
+                                                 'ram', 'ddr4', 'ddr3', 'hdd_size', 'ssd_size', 'nvme_size', 'gpu',
                                                  'price', 'date']]
     data_timeweb_servers['frequency'] = data_timeweb_servers['frequency'].str.lower()
     data_timeweb_servers['frequency'] = data_timeweb_servers['frequency'].str.replace(r' ггц', '')
     data_timeweb_servers = data_timeweb_servers.astype(
-        {'id': int, 'cpu_name': str, 'cpu_count': int, 'cores': int, 'frequency': str, 'ram': str, 'ddr4': int,
-         'ddr3': int, 'hdd_size': int, 'ssd_size': int, 'nvme_size': int, 'price': float})
+        {'id': int, 'cpu_name': str, 'cpu_count': int, 'cores': int, 'frequency': float, 'ram': str, 'ddr4': int,
+         'ddr3': int, 'hdd_size': int, 'ssd_size': int, 'nvme_size': int, 'gpu': str, 'price': float})
     data_timeweb_servers.to_csv(fr'D:\competitor_analysis\timeweb\{current_date}.csv',
                                 index=False)
 
@@ -387,9 +391,9 @@ if __name__ == '__main__':
         "https://api.hostkey.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=NL&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes",
         'https://api.hostkey.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=US&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes',
         'https://api.hostkey.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=RU&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes']
-    load_hetzner(url_hetzner)
-    #load_hostkey(url_hostkey)
-    #load_timeweb(url_timeweb)
-    #load_servers_ru(url_servers_ru)
-    print(pd.read_csv(fr'D:\competitor_analysis\hostkey\{current_date}.csv'))
+    # load_hetzner(url_hetzner)
+    # load_hostkey(url_hostkey)
+    load_timeweb(url_timeweb)
+    # load_servers_ru(url_servers_ru)
+    # print(pd.read_csv(fr'D:\competitor_analysis\hostkey\{current_date}.csv'))
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
