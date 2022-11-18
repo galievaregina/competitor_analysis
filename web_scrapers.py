@@ -316,9 +316,25 @@ def load_reg_ru():
     counter = 0
 
     for server in servers:
-        proc = server.find('span', class_='b-dedicated-servers-list-item__title').get_text().strip()
+        id = server.find('div',class_='b-dedicated-servers-list-item__id').get_text().strip()
+        cpu = server.find('span', class_='b-dedicated-servers-list-item__title').get_text().strip().split('сервера')[1].replace(r'Intel','')
+        parts = cpu.split('x')
+        if len(parts) > 1:
+            cpu_count = parts[0]
+            cpu = parts[1]
+        else:
+            cpu_count = 1
         cores = server.find('span', class_='b-dedicated-servers-list-item__subtitle').get_text().strip()
-        ram = server.find('div', class_='b-dedicated-servers-list-item__ram').get_text().strip()
+        print(cores)
+        ram_data = server.find('div', class_='b-dedicated-servers-list-item__ram').get_text().strip().split('ГБ')
+        ram = ram_data[0]
+        if ram_data[1] == ' DDR4':
+            ddr4 = 1
+            ddr3 = 0
+        else:
+            ddr4= 0
+            ddr3 = 1 
+            
         disks = server.find('div', class_='b-dedicated-servers-list-item__hdd').decode_contents()
         if '<br/>' in str(disks):
             disks = str(disks)
@@ -329,23 +345,23 @@ def load_reg_ru():
             #         disks = disks.get_text()
             disks = disks.strip()
         price = server.find('div', class_='b-dedicated-servers-list-item__current-price')
-
+        if price is None:
+            price = server.find('div', class_='b-dedicated-servers-list-item__price-value b-dedicated-servers-list-item__price-value_per-months_one')
+        datacenter = server.find('span', class_='b-dedicated-servers-list-item__address').get_text().strip()
+        print(price)
         # price = price.span.get_text()
 
-        config_row = [proc, cores, ram, disks, price]
-        config_row = pd.Series(config_row, index=['proc', 'cores', 'ram', 'disks', 'price'], name=counter)
+        config_row = [id,cpu, cpu_count, cores, ram, ddr4, ddr3, disks, datacenter, price]
+        config_row = pd.Series(config_row, index=['id','cpu_name', 'cpu_count', 'cores', 'ram', 'ddr4', 'ddr3', 'disks', 'datacenter', 'price'], name=counter)
 
         data_reg_ru = pd.concat([data_reg_ru, config_row], axis=1, sort=False)
         counter += 1
 
     data_reg_ru = data_reg_ru.transpose()
-
-    data_reg_ru['price'] = data_reg_ru['price'].str.replace(r'[^\d]', '')
+    
     data_reg_ru['cores'] = data_reg_ru['cores'].str.extract(r'(\d+) ')
-    data_reg_ru['frequency'] = data_reg_ru['proc'].str.extract(r'(\d\.\d+) ГГц').astype(float)
+    data_reg_ru['frequency'] = data_reg_ru['cores'].str.extract(r'(\d\.\d+) ГГц').astype(float)
     data_reg_ru['ram'] = data_reg_ru['ram'].str.extract(r'(\d+) ')
-    data_reg_ru['proc'] = data_reg_ru['proc'].str.replace(r'\d\.\d+ ГГц', '')
-    data_reg_ru['proc'] = data_reg_ru['proc'].str.replace(r'(\d+) [xх×]', r'\1x')
     data_reg_ru['disks'] = data_reg_ru['disks'].str.lower()
     data_reg_ru['disks'] = data_reg_ru['disks'].str.replace(r'(sas|sata)', 'hdd')
 
@@ -367,25 +383,15 @@ def load_reg_ru():
 
     data_reg_ru['hdd_size'], data_reg_ru['ssd_size'], data_reg_ru['nvme_size'] = zip(
         *data_reg_ru['disks'].apply(unpack_disks))
-    data_reg_ru['competitor'] = 'reg_ru'
     data_reg_ru = data_reg_ru.rename({
         'proc': 'cpu_name',
-        'cores': 'total_cores',
-        'ram': 'ram_size'
     }, axis=1)
-    data_reg_ru = data_reg_ru[['competitor', 'price', 'cpu_name', 'frequency', 'total_cores',
-                               'ram_size', 'hdd_size', 'ssd_size', 'nvme_size']]
-    data_reg_ru['competitor'] = data_reg_ru['competitor'].astype(str)
-    data_reg_ru['price'] = data_reg_ru['price'].astype(float)
-    data_reg_ru['cpu_name'] = data_reg_ru['cpu_name'].astype(str)
-    data_reg_ru['frequency'] = data_reg_ru['frequency'].astype(float)
-    data_reg_ru['total_cores'] = data_reg_ru['total_cores'].astype(int)
-    data_reg_ru['ram_size'] = data_reg_ru['ram_size'].astype(int)
-    data_reg_ru['hdd_size'] = data_reg_ru['hdd_size'].astype(int)
-    data_reg_ru['ssd_size'] = data_reg_ru['ssd_size'].astype(int)
-    data_reg_ru['nvme_size'] = data_reg_ru['nvme_size'].astype(int)
-    data_reg_ru.to_csv(fr'D:\competitor_analysis\reg_ru\{current_date}.csv',
-                       index=False)
+    data_reg_ru = data_reg_ru[['id','cpu_name', 'cpu_count', 'cores', 'frequency', 'ram', 'ddr4', 'ddr3','hdd_size', 'ssd_size', 'nvme_size','datacenter', 'price']]
+    #data_reg_ru['price'] = data_reg_ru['price'].astype(float)
+    data_reg_ru = data_reg_ru.astype({'id':str,'cpu_name':str,'cpu_count':int,'cores':int,'ram':int,'ddr4':int, 'ddr3':int,'hdd_size':int, 'ssd_size':int, 'nvme_size':int,'datacenter':str})
+    return data_reg_ru
+    #data_reg_ru.to_csv(fr'D:\competitor_analysis\reg_ru\{current_date}.csv',
+                       #index=False)
 
 
 # Press the green button in the gutter to run the script.
