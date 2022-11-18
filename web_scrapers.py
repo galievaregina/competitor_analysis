@@ -308,14 +308,7 @@ def load_timeweb(url):
                                 index=False)
 
 
-def load_reg_ru():
-    r = requests.get('https://www.reg.ru/dedicated/')
-    soup = BeautifulSoup(r.content, "html.parser")
-    servers = soup.findAll('div', {'class': 'b-dedicated-servers-list-item'})
-    data_reg_ru = pd.DataFrame()
-    counter = 0
-
-    for server in servers:
+for server in servers:
         id = server.find('div',class_='b-dedicated-servers-list-item__id').get_text().strip()
         cpu = server.find('span', class_='b-dedicated-servers-list-item__title').get_text().strip().split('сервера')[1].replace(r'Intel','')
         parts = cpu.split('x')
@@ -325,7 +318,6 @@ def load_reg_ru():
         else:
             cpu_count = 1
         cores = server.find('span', class_='b-dedicated-servers-list-item__subtitle').get_text().strip()
-        print(cores)
         ram_data = server.find('div', class_='b-dedicated-servers-list-item__ram').get_text().strip().split('ГБ')
         ram = ram_data[0]
         if ram_data[1] == ' DDR4':
@@ -344,24 +336,24 @@ def load_reg_ru():
         else:
             #         disks = disks.get_text()
             disks = disks.strip()
-        price = server.find('div', class_='b-dedicated-servers-list-item__current-price')
-        if price is None:
-            price = server.find('div', class_='b-dedicated-servers-list-item__price-value b-dedicated-servers-list-item__price-value_per-months_one')
+        
+        if server.find('div', class_='b-dedicated-servers-list-item__current-price') is None:
+            price = server.find('div', class_='b-dedicated-servers-list-item__price-value b-dedicated-servers-list-item__price-value_per-months_one').get_text().strip()
+        else:
+            price = server.find('div', class_='b-dedicated-servers-list-item__current-price').get_text().strip()
         datacenter = server.find('span', class_='b-dedicated-servers-list-item__address').get_text().strip()
-        print(price)
-        # price = price.span.get_text()
-
         config_row = [id,cpu, cpu_count, cores, ram, ddr4, ddr3, disks, datacenter, price]
         config_row = pd.Series(config_row, index=['id','cpu_name', 'cpu_count', 'cores', 'ram', 'ddr4', 'ddr3', 'disks', 'datacenter', 'price'], name=counter)
-
         data_reg_ru = pd.concat([data_reg_ru, config_row], axis=1, sort=False)
         counter += 1
 
     data_reg_ru = data_reg_ru.transpose()
-    
+    data_reg_ru['id'] = data_reg_ru['id'].str.replace(r'Сервер','')
+    data_reg_ru['frequency'] = data_reg_ru['cores'].str.extract(r'(\d\.\d+)').astype(float)
     data_reg_ru['cores'] = data_reg_ru['cores'].str.extract(r'(\d+) ')
-    data_reg_ru['frequency'] = data_reg_ru['cores'].str.extract(r'(\d\.\d+) ГГц').astype(float)
     data_reg_ru['ram'] = data_reg_ru['ram'].str.extract(r'(\d+) ')
+    data_reg_ru['price'] = data_reg_ru['price'].str.extract(r'(\d+\s\d+)')
+    data_reg_ru['price'] = data_reg_ru['price'].str.replace(r'\s','')
     data_reg_ru['disks'] = data_reg_ru['disks'].str.lower()
     data_reg_ru['disks'] = data_reg_ru['disks'].str.replace(r'(sas|sata)', 'hdd')
 
@@ -383,11 +375,8 @@ def load_reg_ru():
 
     data_reg_ru['hdd_size'], data_reg_ru['ssd_size'], data_reg_ru['nvme_size'] = zip(
         *data_reg_ru['disks'].apply(unpack_disks))
-    data_reg_ru = data_reg_ru.rename({
-        'proc': 'cpu_name',
-    }, axis=1)
     data_reg_ru = data_reg_ru[['id','cpu_name', 'cpu_count', 'cores', 'frequency', 'ram', 'ddr4', 'ddr3','hdd_size', 'ssd_size', 'nvme_size','datacenter', 'price']]
-    data_reg_ru = data_reg_ru.astype({'id':str,'cpu_name':str,'cpu_count':int,'cores':int,'ram':int,'ddr4':int, 'ddr3':int,'hdd_size':int, 'ssd_size':int, 'nvme_size':int,'datacenter':str})
+    data_reg_ru = data_reg_ru.astype({'id':str,'cpu_name':str,'cpu_count':int,'cores':int,'ram':int,'ddr4':int, 'ddr3':int,'hdd_size':int, 'ssd_size':int, 'nvme_size':int,'datacenter':str,'price':int})
     return data_reg_ru
     #data_reg_ru.to_csv(fr'D:\competitor_analysis\reg_ru\{current_date}.csv',
                        #index=False)
