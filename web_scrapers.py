@@ -387,7 +387,6 @@ def load_reg_ru():
         'proc': 'cpu_name',
     }, axis=1)
     data_reg_ru = data_reg_ru[['id','cpu_name', 'cpu_count', 'cores', 'frequency', 'ram', 'ddr4', 'ddr3','hdd_size', 'ssd_size', 'nvme_size','datacenter', 'price']]
-    #data_reg_ru['price'] = data_reg_ru['price'].astype(float)
     data_reg_ru = data_reg_ru.astype({'id':str,'cpu_name':str,'cpu_count':int,'cores':int,'ram':int,'ddr4':int, 'ddr3':int,'hdd_size':int, 'ssd_size':int, 'nvme_size':int,'datacenter':str})
     return data_reg_ru
     #data_reg_ru.to_csv(fr'D:\competitor_analysis\reg_ru\{current_date}.csv',
