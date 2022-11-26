@@ -3,7 +3,6 @@
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
-from bs4 import BeautifulSoup
 from datetime import date
 import pandas as pd
 import json
@@ -12,6 +11,8 @@ import re
 from fake_headers import Headers
 import time
 from bs4 import BeautifulSoup
+import numpy as np
+from sqlalchemy import create_engine
 
 current_date = date.today().strftime("%d_%m_%Y")
 
@@ -114,7 +115,6 @@ def load_servers_ru(url):
 
     # data_servers_ru = data_servers_ru.loc[data_servers_ru['loc_id'].isin([5,6,1,20])]
 
-    data_servers_ru['competitor'] = 'servers_ru'
     data_servers_ru['cpu_name'] = data_servers_ru['cpu_name'].str.replace(r'Intel ', '')
     data_servers_ru['disks'] = data_servers_ru['disks'].str.lower()
     data_servers_ru['disks'] = data_servers_ru['disks'].str.replace(r'\"', '')
@@ -147,14 +147,14 @@ def load_servers_ru(url):
     data_servers_ru['hdd_size'], data_servers_ru['ssd_size'], data_servers_ru['nvme_size'] = zip(
         *data_servers_ru['disks'].apply(unpack_disks))
     data_servers_ru = data_servers_ru[
-        ['competitor', 'id', 'cpu_name', 'cpu_count', 'gpu_count', 'cores', 'frequency', 'ram', 'ddr4', 'ddr3',
+        ['id', 'cpu_name', 'cpu_count', 'gpu_count', 'cores', 'frequency', 'ram', 'ddr4', 'ddr3',
          'hdd_size', 'ssd_size', 'nvme_size', 'datacenter', 'price', 'date']]
     data_servers_ru = data_servers_ru.astype(
         {'id': int, 'cpu_name': str, 'cpu_count': int, 'gpu_count': str, 'cores': int, 'frequency': float, 'ram': int,
          'ddr4': int, 'ddr3': int, 'hdd_size': int, 'ssd_size': int, 'nvme_size': int, 'price': float,
          'datacenter': str})
-    data_servers_ru.to_csv(fr'D:\competitor_analysis\servers_ru\{current_date}.csv',
-                           index=False)
+    engine = create_engine('postgresql://postgres:2320uhbR@127.0.0.1:5432/Competitor_analysis')
+    data_servers_ru.to_sql('servers_ru', engine, if_exists='append', index=False)
 
 
 def load_hostkey(url):
@@ -180,7 +180,6 @@ def load_hostkey(url):
         data_hostkey_servers = pd.DataFrame()
         counter = 0
         for server in hostkey_servers:
-            id = server['common']['id']
             name = server['common']['name']
             location = server['common']['location']
             current_price = server['common']['conditions']['items'][0]['prices']['current']
@@ -199,6 +198,8 @@ def load_hostkey(url):
             freq = server['hardware']['cpu']['items'][0]['ghz']
             ram = server['hardware']['ram']['volume']
             disks = server['hardware']['hard_drive']['description'].lower()
+            id_data = str(server['common']['id'])
+            id = id_data + location
             date = current_date
             config_row = [id, name, cpu_name, cpu_count, cores, freq, ram, disks, location, current_price, limit_order,
                           date]
@@ -218,7 +219,7 @@ def load_hostkey(url):
             ['id', 'name', 'cpu_name', 'cpu_count', 'cores', 'frequency', 'ram', 'hdd_size', 'ssd_size',
              'nvme_size', 'datacenter', 'price', ' limit_order', 'date']]
         data_hostkey_servers = data_hostkey_servers.astype(
-            {'id': int, 'name': str, 'cpu_name': str, 'cpu_count': int, 'cores': int,
+            {'id': str, 'name': str, 'cpu_name': str, 'cpu_count': int, 'cores': int,
              'frequency': float, 'ram': int, 'hdd_size': int, 'ssd_size': int,
              'nvme_size': int, 'price': float, 'datacenter': str})
         return data_hostkey_servers
@@ -228,7 +229,8 @@ def load_hostkey(url):
     d_R = create_df(url[2])
     data = [d_NL, d_USA, d_R]
     res_hostkey = pd.concat(data)
-    res_hostkey.to_csv(fr'D:\competitor_analysis\hostkey\{current_date}.csv', index=False)
+    engine = create_engine('postgresql://postgres:2320uhbR@127.0.0.1:5432/Competitor_analysis')
+    res_hostkey.to_sql('hostkey', engine, if_exists='append', index=False)
 
 
 def load_timeweb(url):
@@ -304,13 +306,20 @@ def load_timeweb(url):
     data_timeweb_servers = data_timeweb_servers.astype(
         {'id': int, 'cpu_name': str, 'cpu_count': int, 'cores': int, 'frequency': float, 'ram': str, 'ddr4': int,
          'ddr3': int, 'hdd_size': int, 'ssd_size': int, 'nvme_size': int, 'gpu': str, 'price': float})
-    data_timeweb_servers.to_csv(fr'D:\competitor_analysis\timeweb\{current_date}.csv',
-                                index=False)
+    engine = create_engine('postgresql://postgres:2320uhbR@127.0.0.1:5432/Competitor_analysis')
+    data_timeweb_servers.to_sql('timeweb', engine, if_exists='append', index=False)
 
 
-for server in servers:
-        id = server.find('div',class_='b-dedicated-servers-list-item__id').get_text().strip()
-        cpu = server.find('span', class_='b-dedicated-servers-list-item__title').get_text().strip().split('сервера')[1].replace(r'Intel','')
+def load_reg_ru():
+    r = requests.get('https://www.reg.ru/dedicated/')
+    soup = BeautifulSoup(r.content, "html.parser")
+    servers = soup.findAll('div', {'class': 'b-dedicated-servers-list-item'})
+    data_reg_ru = pd.DataFrame()
+    counter = 0
+    for server in servers:
+        id = server.find('div', class_='b-dedicated-servers-list-item__id').get_text().strip()
+        cpu = server.find('span', class_='b-dedicated-servers-list-item__title').get_text().strip().split('сервера')[
+            1].replace(r'Intel', '')
         parts = cpu.split('x')
         if len(parts) > 1:
             cpu_count = parts[0]
@@ -324,9 +333,9 @@ for server in servers:
             ddr4 = 1
             ddr3 = 0
         else:
-            ddr4= 0
-            ddr3 = 1 
-            
+            ddr4 = 0
+            ddr3 = 1
+
         disks = server.find('div', class_='b-dedicated-servers-list-item__hdd').decode_contents()
         if '<br/>' in str(disks):
             disks = str(disks)
@@ -336,24 +345,29 @@ for server in servers:
         else:
             #         disks = disks.get_text()
             disks = disks.strip()
-        
+
         if server.find('div', class_='b-dedicated-servers-list-item__current-price') is None:
-            price = server.find('div', class_='b-dedicated-servers-list-item__price-value b-dedicated-servers-list-item__price-value_per-months_one').get_text().strip()
+            price = server.find('div',
+                                class_='b-dedicated-servers-list-item__price-value b-dedicated-servers-list-item__price-value_per-months_one').get_text().strip()
         else:
             price = server.find('div', class_='b-dedicated-servers-list-item__current-price').get_text().strip()
         datacenter = server.find('span', class_='b-dedicated-servers-list-item__address').get_text().strip()
-        config_row = [id,cpu, cpu_count, cores, ram, ddr4, ddr3, disks, datacenter, price]
-        config_row = pd.Series(config_row, index=['id','cpu_name', 'cpu_count', 'cores', 'ram', 'ddr4', 'ddr3', 'disks', 'datacenter', 'price'], name=counter)
+        date = current_date
+        config_row = [id, cpu, cpu_count, cores, ram, ddr4, ddr3, disks, datacenter, price, date]
+        config_row = pd.Series(config_row,
+                               index=['id', 'cpu_name', 'cpu_count', 'cores', 'ram', 'ddr4', 'ddr3', 'disks',
+                                      'datacenter',
+                                      'price', 'date'], name=counter)
         data_reg_ru = pd.concat([data_reg_ru, config_row], axis=1, sort=False)
         counter += 1
 
     data_reg_ru = data_reg_ru.transpose()
-    data_reg_ru['id'] = data_reg_ru['id'].str.replace(r'Сервер','')
+    data_reg_ru['id'] = data_reg_ru['id'].str.replace(r'Сервер', '')
     data_reg_ru['frequency'] = data_reg_ru['cores'].str.extract(r'(\d\.\d+)').astype(float)
     data_reg_ru['cores'] = data_reg_ru['cores'].str.extract(r'(\d+) ')
     data_reg_ru['ram'] = data_reg_ru['ram'].str.extract(r'(\d+) ')
     data_reg_ru['price'] = data_reg_ru['price'].str.extract(r'(\d+\s\d+)')
-    data_reg_ru['price'] = data_reg_ru['price'].str.replace(r'\s','')
+    data_reg_ru['price'] = data_reg_ru['price'].str.replace(r'\s', '')
     data_reg_ru['disks'] = data_reg_ru['disks'].str.lower()
     data_reg_ru['disks'] = data_reg_ru['disks'].str.replace(r'(sas|sata)', 'hdd')
 
@@ -375,11 +389,16 @@ for server in servers:
 
     data_reg_ru['hdd_size'], data_reg_ru['ssd_size'], data_reg_ru['nvme_size'] = zip(
         *data_reg_ru['disks'].apply(unpack_disks))
-    data_reg_ru = data_reg_ru[['id','cpu_name', 'cpu_count', 'cores', 'frequency', 'ram', 'ddr4', 'ddr3','hdd_size', 'ssd_size', 'nvme_size','datacenter', 'price']]
-    data_reg_ru = data_reg_ru.astype({'id':str,'cpu_name':str,'cpu_count':int,'cores':int,'ram':int,'ddr4':int, 'ddr3':int,'hdd_size':int, 'ssd_size':int, 'nvme_size':int,'datacenter':str,'price':int})
-    return data_reg_ru
-    #data_reg_ru.to_csv(fr'D:\competitor_analysis\reg_ru\{current_date}.csv',
-                       #index=False)
+    data_reg_ru = data_reg_ru[
+        ['id', 'cpu_name', 'cpu_count', 'cores', 'frequency', 'ram', 'ddr4', 'ddr3', 'hdd_size', 'ssd_size',
+         'nvme_size',
+         'datacenter', 'price', 'date']]
+    data_reg_ru = data_reg_ru.astype(
+        {'id': str, 'cpu_name': str, 'cpu_count': int, 'cores': int, 'ram': int, 'ddr4': int, 'ddr3': int,
+         'hdd_size': int,
+         'ssd_size': int, 'nvme_size': int, 'datacenter': str, 'price': int})
+    engine = create_engine('postgresql://postgres:2320uhbR@127.0.0.1:5432/Competitor_analysis')
+    data_reg_ru.to_sql('reg_ru', engine, if_exists='append', index=False)
 
 
 # Press the green button in the gutter to run the script.
@@ -391,10 +410,27 @@ if __name__ == '__main__':
         "https://api.hostkey.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=NL&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes",
         'https://api.hostkey.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=US&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes',
         'https://api.hostkey.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=RU&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes']
-    # load_hetzner(url_hetzner)
-    # load_hostkey(url_hostkey)
-    # load_timeweb(url_timeweb)
-    # load_servers_ru(url_servers_ru)
-    load_reg_ru()
-    # print(pd.read_csv(fr'D:\competitor_analysis\hostkey\{current_date}.csv'))
+
+    #load_hostkey(url_hostkey)
+    #load_timeweb(url_timeweb)
+    #load_servers_ru(url_servers_ru)
+    #load_reg_ru()
+    #x = pd.read_csv(fr'D:\competitor_analysis\reg_ru\17_11_2022.csv')
+    # del  x['Unnamed: 0']
+    #y = pd.read_csv(fr'D:\competitor_analysis\reg_ru\19_11_2022.csv')
+    # = pd.concat([x, y])
+    # x.to_csv(fr'D:\competitor_analysis\hostkey\25_11_2022.csv', index=False)
+    # z.to_csv(fr'D:\competitor_analysis\hostkey\26_11_2022.csv')
+    # id_group = x.groupby('id')
+    # a = pd.read_csv(fr'D:\competitor_analysis\hostkey\26_11_2022.csv')
+    # del a['db_id']
+    # a = a.rename(columns={'Unnamed: 0': 'db_id'})
+    # list = np.arange(0, 176)
+    # a['db_id'] = pd.Series(list)
+    # a.to_csv(fr'D:\competitor_analysis\hostkey\26_11_2022.csv', index=False)
+    h = pd.read_csv(r'D:\competitor_analysis\servers_ru\26_11_2022.csv')
+    del h['competitor']
+    engine = create_engine('postgresql://postgres:2320uhbR@127.0.0.1:5432/Competitor_analysis')
+    h.to_sql('servers_ru', engine, if_exists='append', index=False)
+
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/

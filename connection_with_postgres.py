@@ -7,9 +7,9 @@ import numpy as np
 from collections import defaultdict
 
 
-def get_diff_price(start, end):
+def get_diff_price(start, end, competitor):
     start1 = (datetime.datetime.strptime(start, '%d_%m_%Y') - datetime.timedelta(days=1)).strftime("%d_%m_%Y")
-
+    cnt_days = (datetime.datetime.strptime(end, '%d_%m_%Y') - (datetime.datetime.strptime(start1, '%d_%m_%Y'))).days + 1
     try:
         # Подключение к существующей базе данных
         connection = psycopg2.connect(database="Competitor_analysis",
@@ -21,22 +21,24 @@ def get_diff_price(start, end):
         connection.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         # Курсор для выполнения операций с базой данных
         cursor = connection.cursor()
-        cursor.execute(f"SELECT id_server,price,date FROM hostkey WHERE date BETWEEN '{start1}' AND '{end}'")
+        cursor.execute(fr"SELECT id, price,date FROM {competitor} WHERE date BETWEEN '{start1}' AND '{end} ORDER BY date ASC'")
         data = cursor.fetchall()
         df = pd.DataFrame(data, columns=['id', 'price', 'date'])
         group_id = df.groupby('id')
         price_change = defaultdict(list)
         for id, id_data in group_id:
-            i = 0
-            while i < len(id_data):
-                if i != 0:
-                    price_change[id].append(id_data.iloc[[i - 1]]['price'].iloc[0] / id_data.iloc[[i]]['price'].iloc[0])
-                i += 1
+            if len(id_data) == cnt_days:
+                i = 0
+                while i < cnt_days:
+                    if i != 0:
+                        price_change[id].append(
+                            round(id_data.iloc[[i - 1]]['price'].iloc[0] / id_data.iloc[[i]]['price'].iloc[0], 1))
+                    i += 1
         res = pd.DataFrame(price_change)
         res = res.transpose()
-        return [pd.date_range(datetime.datetime.strptime(start, '%d_%m_%Y'),
-                              datetime.datetime.strptime(end, '%d_%m_%Y')).strftime('%d_%m_%Y').tolist(),
-                res.mean().tolist()]
+        return pd.DataFrame(data={'date': pd.Series(pd.date_range(datetime.datetime.strptime(start, '%d_%m_%Y'),
+                                                                  datetime.datetime.strptime(end, '%d_%m_%Y')).strftime(
+            '%d_%m_%Y')).tolist(), 'diff': res.mean()})
 
     except (Exception, Error) as error:
         print("Ошибка при работе с PostgreSQL", error)
@@ -47,4 +49,4 @@ def get_diff_price(start, end):
 
 
 if __name__ == '__main__':
-    print(get_diff_price('20_11_2022', '22_11_2022'))
+    print(get_diff_price('20_11_2022', '22_11_2022', 'servers_ru'))
