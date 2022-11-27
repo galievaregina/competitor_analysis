@@ -3,7 +3,6 @@ import psycopg2
 from psycopg2 import Error
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import datetime
-import numpy as np
 from collections import defaultdict
 
 
@@ -21,9 +20,9 @@ def get_diff_price(start, end, competitor):
         connection.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         # Курсор для выполнения операций с базой данных
         cursor = connection.cursor()
-        cursor.execute(fr"SELECT id, price,date FROM {competitor} WHERE date BETWEEN '{start1}' AND '{end} ORDER BY date ASC'")
+        cursor.execute(fr"SELECT id, price,date FROM {competitor} WHERE day BETWEEN '{start1}' AND '{end} AND month =  AND year = ORDER BY date ASC'")
         data = cursor.fetchall()
-        df = pd.DataFrame(data, columns=['id', 'price', 'date'])
+        df = pd.DataFrame(data, columns=['id', 'price', 'day', 'month', 'year'])
         group_id = df.groupby('id')
         price_change = defaultdict(list)
         for id, id_data in group_id:
@@ -50,3 +49,4 @@ def get_diff_price(start, end, competitor):
 
 if __name__ == '__main__':
     print(get_diff_price('20_11_2022', '22_11_2022', 'servers_ru'))
+

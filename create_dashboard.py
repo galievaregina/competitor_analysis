@@ -9,7 +9,7 @@ app = Dash(__name__)
 # assume you have a "long-form" data frame
 # see https://plotly.com/python/px-arguments/ for more options
 hostkey = get_diff_price('20_11_2022', '22_11_2022','hostkey')
-reg_ru = get_diff_price('20_11_2022', '22_11_2022','reg_ru')
+reg_ru = get_diff_price('25_11_2022', '27_11_2022','reg_ru')
 timeweb = get_diff_price('20_11_2022', '22_11_2022','timeweb')
 servers_ru = get_diff_price('20_11_2022', '22_11_2022','servers_ru')
 
