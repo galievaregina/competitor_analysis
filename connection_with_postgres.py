@@ -20,9 +20,10 @@ def get_diff_price(start, end, competitor):
         connection.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         # Курсор для выполнения операций с базой данных
         cursor = connection.cursor()
-        cursor.execute(fr"SELECT id, price,date FROM {competitor} WHERE day BETWEEN '{start1}' AND '{end} AND month =  AND year = ORDER BY date ASC'")
+        cursor.execute(fr"SELECT id, price,date FROM {competitor} WHERE day BETWEEN '{start1}' AND '{end} AND month = 11 AND year = 2022 ORDER BY date ASC'")
         data = cursor.fetchall()
         df = pd.DataFrame(data, columns=['id', 'price', 'day', 'month', 'year'])
+
         group_id = df.groupby('id')
         price_change = defaultdict(list)
         for id, id_data in group_id:
