@@ -32,9 +32,8 @@ def add_to_db(data_from_website, provider):
     engine = create_engine('postgresql://postgres:2320uhbR@127.0.0.1:5432/Competitor_analysis')
     last_config = pd.read_sql_query(f"select * from configurations WHERE provider = '{provider}'", con=engine)
     list_columns = ['cpu_name', 'cpu_count', 'gpu', 'gpu_count', 'cores', 'frequency', 'ram', 'ddr4', 'ddr3',
-                    'hdd_size', 'ssd_size', 'nvme_size', 'datacenter', 'provider']
+                    'hdd_size', 'ssd_size', 'nvme_size', 'datacenter','provider']
     merge = data_from_website.merge(last_config, on=list_columns, how='left')
-    del merge['old']
     merge = merge.rename(columns={'id_config_x': 'id_config', 'id_config_y': 'last'})
     price = merge.loc[~merge['last'].isna()]
     price = price[['id_config', 'price', 'date', 'last']]
@@ -43,17 +42,10 @@ def add_to_db(data_from_website, provider):
     new_data = merge.loc[merge['last'].isna()]
     if ~new_data.empty:
         new_config = new_data[['id_config', 'cpu_name', 'cpu_count', 'gpu', 'gpu_count', 'cores', 'frequency', 'ram',
-                               'ddr4', 'ddr3', 'hdd_size', 'ssd_size', 'nvme_size', 'datacenter', 'provider']]
-        cnt_ids = new_config.shape[0]
-        i = 0
-        list_id = list()
-        while i <= cnt_ids:
-            list_id.append(uuid4())
-        new_config['id_config'] = pd.Series(list_id)
+                               'ddr4', 'ddr3', 'hdd_size', 'ssd_size', 'nvme_size', 'datacenter','provider']]
         new_config.to_sql('configurations', engine, if_exists='append', index=False)
         new_price = new_data[['id_config', 'price', 'date']]
         price = pd.concat([price, new_price])
-    price.to_sql('price', engine, if_exists='append', index=False)
 
 
 def load_servers_ru(url):
@@ -62,10 +54,12 @@ def load_servers_ru(url):
     data_servers_ru = pd.DataFrame()
     counter = 0
     for server in servers_ru:
-        id_config = 0
+        id_config = uuid4()
         cpu_name = server['cpu_name']
         cpu_count = server['processor_count']
         gpu_count = server['gpu_count']
+        if gpu_count is None:
+            gpu_count = 0
         cores = server['cores']
         freq = server['processor_speed'] / 1000
         ram = server['ram_size']
@@ -76,7 +70,7 @@ def load_servers_ru(url):
             ddr4 = 0
             ddr3 = 1
         disks = server['hdds_description']
-        gpu = numpy.NAN
+        gpu = None
         datacenter = server['location_name'].split(' ')[0]
         competitor = 'servers_ru'
         price = server['prices']['full']['hosting']['total']
@@ -128,6 +122,11 @@ def load_servers_ru(url):
     data_servers_ru = data_servers_ru[
         ['id_config', 'cpu_name', 'cpu_count', 'gpu', 'gpu_count', 'cores', 'frequency', 'ram', 'ddr4', 'ddr3',
          'hdd_size', 'ssd_size', 'nvme_size', 'datacenter', 'provider', 'price', 'date']]
+    data_servers_ru = data_servers_ru.astype(
+        {'id_config': object, 'cpu_name': str, 'cpu_count': int, 'gpu': None, 'gpu_count': int, 'cores': int,
+         'frequency': float, 'ram': int, 'ddr4': int, 'ddr3': int,
+         'hdd_size': int, 'ssd_size': int, 'nvme_size': int, 'datacenter': str, 'provider': str, 'price': float,
+         'date': object})
     add_to_db(data_servers_ru, 'servers_ru')
 
 
@@ -162,18 +161,19 @@ def load_hostkey(url):
             a = a.split('x')
             if len(a) == 1:
                 cpu_count = 1
-                cpu_name = a[0]
+                cpu_name = a[0].strip(r'\s')
             else:
                 cpu_count = a[0]
-                cpu_name = a[1]
+                cpu_name = a[1].strip(r'\s')
             cores = server['hardware']['cpu']['number_cores']
             freq = server['hardware']['cpu']['items'][0]['ghz']
             ram = server['hardware']['ram']['volume']
             disks = server['hardware']['hard_drive']['description'].lower()
-            id_config = 0
+            id_config = uuid4()
             competitor = 'hostkey'
             date = current_date
-            gpu = ddr3 = ddr4 = gpu_count = numpy.NAN
+            gpu = ddr3 = ddr4 = None
+            gpu_count = 0
             config_row = [id_config, cpu_name, cpu_count, gpu, gpu_count, cores, freq, ram, ddr4, ddr3, disks,
                           datacenter,
                           competitor, price, date]
@@ -201,6 +201,12 @@ def load_hostkey(url):
     d_R = create_df(url[2])
     data = [d_NL, d_USA, d_R]
     res_hostkey = pd.concat(data)
+    res_hostkey['cpu_name'] = res_hostkey['cpu_name'].str.strip()
+    res_hostkey = res_hostkey.astype(
+        {'id_config': object, 'cpu_name': str, 'cpu_count': int, 'gpu': None , 'gpu_count': int, 'cores': int,
+         'frequency': float, 'ram': int, 'ddr4': None, 'ddr3': None,
+         'hdd_size': int, 'ssd_size': int, 'nvme_size': int, 'datacenter': str, 'provider': str, 'price': float,
+         'date': object})
     add_to_db(res_hostkey, 'hostkey')
 
 
@@ -210,14 +216,14 @@ def load_timeweb(url):
     data_timeweb_servers = pd.DataFrame()
     counter = 0
     for server in timeweb_servers:
-        id_config = 0
+        id_config = uuid4()
         a = server['cpu_vendor_short'].split('x')
         if len(a) == 1:
             cpu_count = 1
-            cpu_name = a[0]
+            cpu_name = a[0].strip().replace(r'Intel ', ' ')
         else:
             cpu_count = a[0]
-            cpu_name = a[1]
+            cpu_name = a[1].strip().replace(r'Intel ', ' ')
         cores = server['cpu_cores']
         freq = server['cpu_vendor'].split(',')[1].split('-')[0]
         ram = int(server['memory']) // 1000
@@ -233,14 +239,14 @@ def load_timeweb(url):
             gpu_data = parts[1]
             gpu_data_parts = gpu_data.split('x')
             if len(gpu_data_parts) > 2:
-                gpu = gpu_data_parts[1] + gpu_data_parts[2]
+                gpu = (gpu_data_parts[1]+'x'+ gpu_data_parts[2]).strip()
                 gpu_count = int(gpu_data_parts[0])
             else:
-                gpu = gpu_data
+                gpu = gpu_data.strip()
                 gpu_count = 1
             disks = parts[0]
         else:
-            gpu = 0
+            gpu = None
             gpu_count = 0
         price = server['price']
         date = current_date
@@ -287,6 +293,13 @@ def load_timeweb(url):
          'hdd_size', 'ssd_size', 'nvme_size', 'datacenter', 'provider', 'price', 'date']]
     data_timeweb_servers['frequency'] = data_timeweb_servers['frequency'].str.lower()
     data_timeweb_servers['frequency'] = data_timeweb_servers['frequency'].str.replace(r' ггц', '')
+    data_timeweb_servers['cpu_name'] = data_timeweb_servers['cpu_name'].str.strip()
+
+    data_timeweb_servers = data_timeweb_servers.astype(
+        {'id_config': object, 'cpu_name': str, 'cpu_count': int, 'gpu': object, 'gpu_count': int, 'cores': int,
+         'frequency': float, 'ram': int, 'ddr4': int, 'ddr3': int,
+         'hdd_size': int, 'ssd_size': int, 'nvme_size': int, 'datacenter': None, 'provider': str, 'price': float,
+         'date': object})
     add_to_db(data_timeweb_servers, 'timeweb')
 
 
@@ -333,12 +346,13 @@ def load_reg_ru():
             price = server.find('div', class_='b-dedicated-servers-list-item__current-price').get_text().strip()
         datacenter = server.find('span', class_='b-dedicated-servers-list-item__address').get_text().strip()
         date = current_date
-        gpu = gpu_count = freq = numpy.NAN
+        gpu = None
+        gpu_count = 0
         competitor = 'reg_ru'
-        config_row = [id_config, cpu_name, cpu_count, gpu, gpu_count, cores, freq, ram, ddr4, ddr3, disks, datacenter,
+        config_row = [id_config, cpu_name, cpu_count, gpu, gpu_count, cores, ram, ddr4, ddr3, disks, datacenter,
                       competitor, price, date]
         config_row = pd.Series(config_row,
-                               index=['id_config', 'cpu_name', 'cpu_count', 'gpu', 'gpu_count', 'cores', 'frequency',
+                               index=['id_config', 'cpu_name', 'cpu_count', 'gpu', 'gpu_count', 'cores',
                                       'ram', 'ddr4', 'ddr3',
                                       'disks', 'datacenter', 'provider', 'price', 'date'], name=counter)
         data_reg_ru = pd.concat([data_reg_ru, config_row], axis=1, sort=False)
@@ -346,6 +360,7 @@ def load_reg_ru():
 
     data_reg_ru = data_reg_ru.transpose()
     data_reg_ru['frequency'] = data_reg_ru['cores'].str.extract(r'(\d\.\d+)').astype(float)
+    data_reg_ru['cpu_name'] = data_reg_ru['cpu_name'].str.strip()
     data_reg_ru['cores'] = data_reg_ru['cores'].str.extract(r'(\d+) ')
     data_reg_ru['ram'] = data_reg_ru['ram'].str.extract(r'(\d+) ')
     data_reg_ru['price'] = data_reg_ru['price'].str.extract(r'(\d+\s\d+)')
@@ -374,39 +389,12 @@ def load_reg_ru():
     data_reg_ru = data_reg_ru[
         ['id_config', 'cpu_name', 'cpu_count', 'gpu', 'gpu_count', 'cores', 'frequency', 'ram', 'ddr4', 'ddr3',
          'hdd_size', 'ssd_size', 'nvme_size', 'datacenter', 'provider', 'price', 'date']]
+    data_reg_ru = data_reg_ru.astype(
+        {'id_config': object, 'cpu_name': str, 'cpu_count': int, 'gpu': None, 'gpu_count': int, 'cores': int,
+         'frequency': float, 'ram': int, 'ddr4': int, 'ddr3': int,
+         'hdd_size': int, 'ssd_size': int, 'nvme_size': int, 'datacenter': str, 'provider': str, 'price': float,
+         'date': object})
     add_to_db(data_reg_ru, 'reg_ru')
 
 
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    url_hetzner = "https://www.hetzner.com/_resources/app/jsondata/live_data_en.json?m=1668706433366"
-    url_timeweb = 'https://timeweb.cloud/v1.1/registration/servers'
-    url_servers_ru = 'https://marketing-api.servers.ru/server_models?ru_site=true&gpu_option=0'
-    url_hostkey = [
-        "https://api.hostkey.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=NL&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes",
-        'https://api.hostkey.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=US&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes',
-        'https://api.hostkey.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=RU&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes']
-
-    # load_hostkey(url_hostkey)
-    #load_timeweb(url_timeweb)
-    # load_servers_ru(url_servers_ru)
-    #load_reg_ru()
-    # x = pd.read_csv(fr'D:\competitor_analysis\reg_ru\17_11_2022.csv')
-    # y = pd.read_csv(fr'D:\competitor_analysis\reg_ru\19_11_2022.csv')
-    # = pd.concat([x, y])
-    # x.to_csv(fr'D:\competitor_analysis\hostkey\25_11_2022.csv', index=False)
-    # z.to_csv(fr'D:\competitor_analysis\hostkey\26_11_2022.csv')
-    # h = pd.read_csv(r'D:\competitor_analysis\hostkey\17-27.csv')
-    # del h['competitor']
-    # print(df)
-    # day = list()
-    # for index,row in df.iterrows():
-    # parts = row['date'].split('_')
-    # day.append(int(parts[0]))
-    # df['day'] = pd.Series(day)
-    # df['month'] = 11
-    # df['year'] = 2022
-    # del df['date']
-    # df.to_csv(fr'D:\competitor_analysis\hostkey\17-27.csv', index=False)
-    # h.to_sql('hostkey', engine, if_exists='replace', index=False)
