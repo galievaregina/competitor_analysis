@@ -33,8 +33,10 @@ def add_to_db(data_from_website, provider):
     last_config = pd.read_sql_query(f"select * from configurations WHERE provider = '{provider}'", con=engine)
     list_columns = ['cpu_name', 'cpu_count', 'gpu', 'gpu_count', 'cores', 'frequency', 'ram', 'ddr4', 'ddr3',
                     'hdd_size', 'ssd_size', 'nvme_size', 'datacenter','provider']
+    data_from_website = data_from_website.drop_duplicates(subset=list_columns)
     merge = data_from_website.merge(last_config, on=list_columns, how='left')
     merge = merge.rename(columns={'id_config_x': 'id_config', 'id_config_y': 'last'})
+    print(merge)
     price = merge.loc[~merge['last'].isna()]
     price = price[['id_config', 'price', 'date', 'last']]
     price['id_config'] = price['last']
@@ -46,7 +48,8 @@ def add_to_db(data_from_website, provider):
         new_config.to_sql('configurations', engine, if_exists='append', index=False)
         new_price = new_data[['id_config', 'price', 'date']]
         price = pd.concat([price, new_price])
-
+        print(new_config)
+    price.to_sql('price', engine, if_exists='append', index=False)
 
 def load_servers_ru(url):
     servers_ru = load_data(url).json()
