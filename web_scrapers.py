@@ -13,10 +13,12 @@ from fake_headers import Headers
 import time
 from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
+from prefect import flow, task
 
 current_date = date.today()
 
 
+@task
 def load_data(url):
     header = Headers(headers=False)
     header = header.generate()
@@ -28,11 +30,12 @@ def load_data(url):
     return servers
 
 
+@task
 def add_to_db(data_from_website, provider):
     engine = create_engine('postgresql://postgres:2320uhbR@127.0.0.1:5432/Competitor_analysis')
     last_config = pd.read_sql_query(f"select * from configurations WHERE provider = '{provider}'", con=engine)
     list_columns = ['cpu_name', 'cpu_count', 'gpu', 'gpu_count', 'cores', 'frequency', 'ram', 'ddr4', 'ddr3',
-                    'hdd_size', 'ssd_size', 'nvme_size', 'datacenter','provider']
+                    'hdd_size', 'ssd_size', 'nvme_size', 'datacenter', 'provider']
     data_from_website = data_from_website.drop_duplicates(subset=list_columns)
     merge = data_from_website.merge(last_config, on=list_columns, how='left')
     merge = merge.rename(columns={'id_config_x': 'id_config', 'id_config_y': 'last'})
@@ -44,13 +47,15 @@ def add_to_db(data_from_website, provider):
     new_data = merge.loc[merge['last'].isna()]
     if ~new_data.empty:
         new_config = new_data[['id_config', 'cpu_name', 'cpu_count', 'gpu', 'gpu_count', 'cores', 'frequency', 'ram',
-                               'ddr4', 'ddr3', 'hdd_size', 'ssd_size', 'nvme_size', 'datacenter','provider']]
+                               'ddr4', 'ddr3', 'hdd_size', 'ssd_size', 'nvme_size', 'datacenter', 'provider']]
         new_config.to_sql('configurations', engine, if_exists='append', index=False)
         new_price = new_data[['id_config', 'price', 'date']]
         price = pd.concat([price, new_price])
         print(new_config)
     price.to_sql('price', engine, if_exists='append', index=False)
 
+
+@flow
 def load_servers_ru(url):
     servers_ru = load_data(url).json()
     servers_ru = servers_ru['data']
@@ -97,6 +102,7 @@ def load_servers_ru(url):
     data_servers_ru['disks'] = data_servers_ru['disks'].str.replace(r'sata', 'hdd')
     data_servers_ru['disks'] = data_servers_ru['disks'].str.replace(r'sas', 'hdd')
 
+    @task
     def unpack_disks(disks):
         output = {
             'hdd': 0,
@@ -133,7 +139,9 @@ def load_servers_ru(url):
     add_to_db(data_servers_ru, 'servers_ru')
 
 
+@flow
 def load_hostkey(url):
+    @task
     def unpack_disks_hostkey(disks):
         output = {
             'hdd': 0,
@@ -150,6 +158,7 @@ def load_hostkey(url):
             output[disks[1]] = size
         return output['hdd'], output['ssd'], output['nvme']
 
+    @flow
     def create_df(url):
         hostkey_servers = load_data(url).json()
         hostkey_servers = hostkey_servers['response']
@@ -206,13 +215,14 @@ def load_hostkey(url):
     res_hostkey = pd.concat(data)
     res_hostkey['cpu_name'] = res_hostkey['cpu_name'].str.strip()
     res_hostkey = res_hostkey.astype(
-        {'id_config': object, 'cpu_name': str, 'cpu_count': int, 'gpu': None , 'gpu_count': int, 'cores': int,
+        {'id_config': object, 'cpu_name': str, 'cpu_count': int, 'gpu': None, 'gpu_count': int, 'cores': int,
          'frequency': float, 'ram': int, 'ddr4': None, 'ddr3': None,
          'hdd_size': int, 'ssd_size': int, 'nvme_size': int, 'datacenter': str, 'provider': str, 'price': float,
          'date': object})
     add_to_db(res_hostkey, 'hostkey')
 
 
+@flow
 def load_timeweb(url):
     timeweb_servers = load_data(url).json()
     timeweb_servers = timeweb_servers['body']
@@ -242,7 +252,7 @@ def load_timeweb(url):
             gpu_data = parts[1]
             gpu_data_parts = gpu_data.split('x')
             if len(gpu_data_parts) > 2:
-                gpu = (gpu_data_parts[1]+'x'+ gpu_data_parts[2]).strip()
+                gpu = (gpu_data_parts[1] + 'x' + gpu_data_parts[2]).strip()
                 gpu_count = int(gpu_data_parts[0])
             else:
                 gpu = gpu_data.strip()
@@ -265,6 +275,7 @@ def load_timeweb(url):
         data_timeweb_servers = pd.concat([data_timeweb_servers, config_row], axis=1, sort=False)
         counter += 1
 
+    @task
     def unpack_disks_timeweb(disks):
         output = {
             'hdd': 0,
@@ -297,7 +308,6 @@ def load_timeweb(url):
     data_timeweb_servers['frequency'] = data_timeweb_servers['frequency'].str.lower()
     data_timeweb_servers['frequency'] = data_timeweb_servers['frequency'].str.replace(r' ггц', '')
     data_timeweb_servers['cpu_name'] = data_timeweb_servers['cpu_name'].str.strip()
-
     data_timeweb_servers = data_timeweb_servers.astype(
         {'id_config': object, 'cpu_name': str, 'cpu_count': int, 'gpu': object, 'gpu_count': int, 'cores': int,
          'frequency': float, 'ram': int, 'ddr4': int, 'ddr3': int,
@@ -306,6 +316,7 @@ def load_timeweb(url):
     add_to_db(data_timeweb_servers, 'timeweb')
 
 
+@flow
 def load_reg_ru():
     r = requests.get('https://www.reg.ru/dedicated/')
     soup = BeautifulSoup(r.content, "html.parser")
@@ -314,8 +325,9 @@ def load_reg_ru():
     counter = 0
     for server in servers:
         id_config = uuid4()
-        cpu_name = server.find('span', class_='b-dedicated-servers-list-item__title').get_text().strip().split('сервера')[
-            1].replace(r'Intel', '')
+        cpu_name = \
+            server.find('span', class_='b-dedicated-servers-list-item__title').get_text().strip().split('сервера')[
+                1].replace(r'Intel', '')
         parts = cpu_name.split('x')
         if len(parts) > 1:
             cpu_count = parts[0]
@@ -371,6 +383,7 @@ def load_reg_ru():
     data_reg_ru['disks'] = data_reg_ru['disks'].str.lower()
     data_reg_ru['disks'] = data_reg_ru['disks'].str.replace(r'(sas|sata)', 'hdd')
 
+    @task
     def unpack_disks(disks):
         output = {
             'hdd': 0,
@@ -398,6 +411,3 @@ def load_reg_ru():
          'hdd_size': int, 'ssd_size': int, 'nvme_size': int, 'datacenter': str, 'provider': str, 'price': float,
          'date': object})
     add_to_db(data_reg_ru, 'reg_ru')
-
-
-

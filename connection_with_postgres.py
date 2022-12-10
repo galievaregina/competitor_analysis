@@ -47,6 +47,31 @@ def get_diff_price(start, end, competitor):
             cursor.close()
             connection.close()
 
+def config_avaliables(competitor):
+    try:
+        # Подключение к существующей базе данных
+        connection = psycopg2.connect(database="Competitor_analysis",
+                                      user="postgres",
+                                      # пароль, который указали при установке PostgreSQL
+                                      password="2320uhbR",
+                                      host="127.0.0.1",
+                                      port="5432")
+        connection.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        # Курсор для выполнения операций с базой данных
+        cursor = connection.cursor()
+        cursor.execute(
+            fr"SELECT id_config, COUNT(date)  FROM price WHERE id_config IN (SELECT id_config FROM configurations WHERE provider = '{competitor}') GROUP BY id_config")
+        data = cursor.fetchall()
+        df = pd.DataFrame(data, columns=['id_config', 'date'])
+        return df
+
+    except (Exception, Error) as error:
+        print("Ошибка при работе с PostgreSQL", error)
+    finally:
+        if connection:
+            cursor.close()
+            connection.close()
 
 if __name__ == '__main__':
-    print(get_diff_price('2022-12-05', '2022-12-05', 'reg_ru'))
+    #print(get_diff_price('2022-12-05', '2022-12-05', 'reg_ru'))
+    config_avaliables('reg_ru')
